@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.res.Configuration
 import android.os.Build
 import android.os.Bundle
+import android.util.Log
 import android.view.MotionEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -39,10 +40,16 @@ import com.alam.scratchpad.ui.theme.ScratchPadTheme
 
 class MainActivity : ComponentActivity() {
     private val drawingController = DrawingController(DrawingModel())
+    private lateinit var drawingStorage: DrawingStorage
 
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+
+        drawingStorage = DrawingStorage(filesDir)
+        runCatching { drawingStorage.load() }
+            .onSuccess(drawingController::restoreDrawPaths)
+            .onFailure { Log.e(TAG, "Could not load drawing", it) }
 
         // Can show the drawing behind the status/navigation bars
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -72,11 +79,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    override fun onStop() {
+        // ponytail: one atomic lifecycle write; add debounced background saves if large canvases make this slow.
+        runCatching { drawingStorage.save(drawingController.getDrawPaths().toList()) }
+            .onFailure { Log.e(TAG, "Could not save drawing", it) }
+        super.onStop()
+    }
+
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
         drawingController.onOrientationChanged()
     }
 
+    companion object {
+        private const val TAG = "MainActivity"
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -238,12 +255,12 @@ fun ScratchPadCanvas(
                 )
             )
     ) {
-        fun drawPath(path: DrawPath) {
+        fun drawStroke(path: Path, color: Color, width: Float) {
             drawPath(
-                color = path.color,
-                path = path.path,
+                color = color,
+                path = path,
                 style = Stroke(
-                    width = path.strokeWidth,
+                    width = width,
                     cap = StrokeCap.Round,
                     join = StrokeJoin.Round
                 ),
@@ -252,17 +269,10 @@ fun ScratchPadCanvas(
 
         // draw existing paths
         for (path in drawingController.getDrawPaths()) {
-            drawPath(path)
+            drawStroke(path.path, path.color, path.strokeWidth)
         }
 
         // draw the current path from the points still being smoothed and added to
-        val pointsPath = drawingController.getPointsPath()
-        drawPath(
-            DrawPath(
-                path = pointsPath,
-                color = drawingColor,
-                strokeWidth = strokeWidth
-            )
-        )
+        drawStroke(drawingController.getPointsPath(), drawingColor, strokeWidth)
     }
 }

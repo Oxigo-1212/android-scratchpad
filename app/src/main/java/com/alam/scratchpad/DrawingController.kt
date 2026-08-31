@@ -55,30 +55,24 @@ class DrawingController(private val model: DrawingModel) {
     fun clearPoints() {
         model.points.clear()
     }
+    private fun getSmoothedPoints(): List<Offset> {
+        return Utilities.chaikinSmoothing(model.points, AppSettings.SmoothingIterations)
+    }
     fun getPointsPath(): Path {
-//        val points =
-//            if (model.drawingMode == DrawingMode.Pen)
-//                Utilities.chaikinSmoothing(model.points, AppSettings.SmoothingIterations)
-//            else model.points
-        val points = Utilities.chaikinSmoothing(model.points, AppSettings.SmoothingIterations)
-
-        val path = Path()
-        for ((i, point) in points.withIndex()) {
-            if (i == 0) {
-                path.moveTo(point.x, point.y)
-            } else {
-                path.lineTo(point.x, point.y)
-            }
-        }
-        return path
+        return DrawPath.pathFromPoints(getSmoothedPoints())
     }
     fun addPointsToPaths() {
         model.paths += DrawPath(
-            path = getPointsPath(),
+            points = getSmoothedPoints(),
             color = model.drawingColor,
             strokeWidth = getStrokeWidth()
         )
         clearPoints()
+    }
+    fun restoreDrawPaths(paths: List<DrawPath>) {
+        clearPoints()
+        model.paths.clear()
+        model.paths.addAll(paths)
     }
     fun getMappedOffset(point: Offset): Offset {
         return Offset(
