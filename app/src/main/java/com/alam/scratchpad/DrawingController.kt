@@ -34,6 +34,13 @@ class DrawingController(private val model: DrawingModel) {
         model.cycleStrokeWidthCurrentIndex = nextIndex
         model.strokeWidth = AppSettings.AvailableStrokeWidths[nextIndex]
     }
+    fun setDarkCanvas(enabled: Boolean) {
+        model.darkCanvas = enabled
+    }
+    fun toggleDarkCanvas(): Boolean {
+        model.darkCanvas = !model.darkCanvas
+        return model.darkCanvas
+    }
     fun updateScale(delta: Float) {
         model.scale *= delta
         if (AppSettings.LimitScaling) {
@@ -102,7 +109,15 @@ class DrawingController(private val model: DrawingModel) {
         return model.scale
     }
     fun getDrawingBackground(): Color {
-        return model.drawingBackground
+        return if (model.darkCanvas) Color.Black else Color.White
+    }
+    fun getDisplayColor(color: Color): Color {
+        if (!model.darkCanvas) return color
+        return when (color) {
+            Color.Black -> Color.White
+            Color.White -> Color.Black
+            else -> color
+        }
     }
     fun getDrawingColor(): Color {
         return model.drawingColor

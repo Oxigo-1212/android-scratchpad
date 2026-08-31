@@ -18,7 +18,7 @@ class DrawingModel {
 
     var strokeWidth by mutableStateOf(AppSettings.DefaultStrokeWidth)
     var drawingMode by mutableStateOf(DrawingMode.Pen)
-    var drawingBackground by mutableStateOf(AppSettings.DefaultBackgroundColor)
+    var darkCanvas by mutableStateOf(true)
     var drawingColor by mutableStateOf(AppSettings.DefaultDrawingColor)
 
     var cycleDrawingColorCurrentIndex by mutableStateOf(0)

@@ -46,6 +46,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
+        val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
+        drawingController.setDarkCanvas(preferences.getBoolean(PREF_DARK_CANVAS, true))
+
         drawingStorage = DrawingStorage(filesDir)
         runCatching { drawingStorage.load() }
             .onSuccess(drawingController::restoreDrawPaths)
@@ -73,7 +76,9 @@ class MainActivity : ComponentActivity() {
                     modifier = Modifier.fillMaxSize(), //.systemBarsPadding(),
                     color = MaterialTheme.colorScheme.background,
                 ) {
-                    App(drawingController)
+                    App(drawingController) { darkCanvas ->
+                        preferences.edit().putBoolean(PREF_DARK_CANVAS, darkCanvas).apply()
+                    }
                 }
             }
         }
@@ -93,6 +98,8 @@ class MainActivity : ComponentActivity() {
 
     companion object {
         private const val TAG = "MainActivity"
+        private const val PREFERENCES_NAME = "scratchpad_preferences"
+        private const val PREF_DARK_CANVAS = "dark_canvas"
     }
 }
 
@@ -100,7 +107,8 @@ class MainActivity : ComponentActivity() {
 @SuppressLint("UnusedMaterialScaffoldPaddingParameter", "UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun App(
-    drawingController: DrawingController
+    drawingController: DrawingController,
+    onDarkCanvasChanged: (Boolean) -> Unit = {},
 ) {
     Scaffold(
         floatingActionButtonPosition = FabPosition.Center,
@@ -111,6 +119,9 @@ fun App(
                     .alpha(0.7f)
                     .mandatorySystemGesturesPadding()
             ) {
+                val penColor = drawingController.getDisplayColor(
+                    AppSettings.AvailableDrawingColors[drawingController.getDrawingColorIndex()]
+                )
                 FloatingActionButton(
                     onClick = {
                         if (drawingController.getDrawingMode() != DrawingMode.Pen) {
@@ -119,12 +130,13 @@ fun App(
                             drawingController.cycleDrawingColor()
                         }
                     },
+                    containerColor = if (penColor == Color.White) Color.Black else Color.White,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.pen),
                         contentDescription = "Pen",
                         modifier = Modifier.size(26.dp),
-                        tint = AppSettings.AvailableDrawingColors[drawingController.getDrawingColorIndex()]
+                        tint = penColor
                     )
                 }
                 FloatingActionButton(
@@ -164,9 +176,18 @@ fun App(
             }
         },
         content = {
-            ScratchPadCanvas(
-                drawingController = drawingController
-            )
+            Box(modifier = Modifier.fillMaxSize()) {
+                ScratchPadCanvas(drawingController = drawingController)
+                OptionsMenu(
+                    iconTint = drawingController.getDisplayColor(Color.Black),
+                    onReverseColors = {
+                        onDarkCanvasChanged(drawingController.toggleDarkCanvas())
+                    },
+                    modifier = Modifier
+                        .align(androidx.compose.ui.Alignment.TopEnd)
+                        .padding(8.dp)
+                )
+            }
         }
     )
 
@@ -177,6 +198,37 @@ fun App(
 //            toast.show()
 //        }
 //    }
+}
+
+@Composable
+private fun OptionsMenu(
+    iconTint: Color,
+    onReverseColors: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var expanded by remember { mutableStateOf(false) }
+
+    Box(modifier = modifier) {
+        androidx.compose.material3.IconButton(onClick = { expanded = true }) {
+            androidx.compose.material3.Icon(
+                painter = painterResource(R.drawable.more_vert),
+                contentDescription = "Options",
+                tint = iconTint,
+            )
+        }
+        androidx.compose.material3.DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = { expanded = false },
+        ) {
+            androidx.compose.material3.DropdownMenuItem(
+                text = { androidx.compose.material3.Text("Reverse colors") },
+                onClick = {
+                    expanded = false
+                    onReverseColors()
+                },
+            )
+        }
+    }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -269,10 +321,18 @@ fun ScratchPadCanvas(
 
         // draw existing paths
         for (path in drawingController.getDrawPaths()) {
-            drawStroke(path.path, path.color, path.strokeWidth)
+            drawStroke(
+                path.path,
+                drawingController.getDisplayColor(path.color),
+                path.strokeWidth
+            )
         }
 
         // draw the current path from the points still being smoothed and added to
-        drawStroke(drawingController.getPointsPath(), drawingColor, strokeWidth)
+        drawStroke(
+            drawingController.getPointsPath(),
+            drawingController.getDisplayColor(drawingColor),
+            strokeWidth
+        )
     }
 }
