@@ -124,8 +124,13 @@ fun App(
                     .alpha(0.7f)
                     .mandatorySystemGesturesPadding()
             ) {
-                val buttonContainerColor = drawingController.getDisplayColor(Color.White)
                 val buttonContentColor = drawingController.getDisplayColor(Color.Black)
+                val buttonElevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(
+                    defaultElevation = 0.dp,
+                    pressedElevation = 0.dp,
+                    focusedElevation = 0.dp,
+                    hoveredElevation = 0.dp,
+                )
 
                 if (toolbarVisible) {
                     val penColor = drawingController.getDisplayColor(
@@ -139,8 +144,9 @@ fun App(
                                 drawingController.cycleDrawingColor()
                             }
                         },
-                        containerColor = buttonContainerColor,
+                        containerColor = Color.Transparent,
                         contentColor = buttonContentColor,
+                        elevation = buttonElevation,
                     ) {
                         Icon(
                             painter = painterResource(R.drawable.pen),
@@ -153,8 +159,9 @@ fun App(
                         onClick = {
                             drawingController.cycleStrokeWidth()
                         },
-                        containerColor = buttonContainerColor,
+                        containerColor = Color.Transparent,
                         contentColor = buttonContentColor,
+                        elevation = buttonElevation,
                     ) {
                         val sizeIcons = listOf(R.drawable.size1, R.drawable.size2)
                         Icon(
@@ -167,8 +174,9 @@ fun App(
                         onClick = {
                             drawingController.setEraseMode()
                         },
-                        containerColor = buttonContainerColor,
+                        containerColor = Color.Transparent,
                         contentColor = buttonContentColor,
+                        elevation = buttonElevation,
                     ) {
                         Icon(
                             painterResource(R.drawable.eraser),
@@ -180,8 +188,9 @@ fun App(
                         onClick = {
                             drawingController.clearAll()
                         },
-                        containerColor = buttonContainerColor,
+                        containerColor = Color.Transparent,
                         contentColor = buttonContentColor,
+                        elevation = buttonElevation,
                     ) {
                         Icon(
                             painterResource(R.drawable.trash),
@@ -194,12 +203,7 @@ fun App(
                     onClick = { toolbarVisible = !toolbarVisible },
                     containerColor = Color.Transparent,
                     contentColor = buttonContentColor,
-                    elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(
-                        defaultElevation = 0.dp,
-                        pressedElevation = 0.dp,
-                        focusedElevation = 0.dp,
-                        hoveredElevation = 0.dp,
-                    ),
+                    elevation = buttonElevation,
                 ) {
                     Icon(
                         painter = painterResource(R.drawable.toolbar_toggle),
