@@ -18,10 +18,12 @@ import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.*
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.*
@@ -110,67 +112,101 @@ fun App(
     drawingController: DrawingController,
     onDarkCanvasChanged: (Boolean) -> Unit = {},
 ) {
+    var toolbarVisible by rememberSaveable { mutableStateOf(true) }
+
     Scaffold(
-        floatingActionButtonPosition = FabPosition.Center,
+        floatingActionButtonPosition = if (toolbarVisible) FabPosition.Center else FabPosition.End,
         floatingActionButton = {
             Row(
                 horizontalArrangement = Arrangement.spacedBy(12.dp),
+                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
                 modifier = Modifier
                     .alpha(0.7f)
                     .mandatorySystemGesturesPadding()
             ) {
-                val penColor = drawingController.getDisplayColor(
-                    AppSettings.AvailableDrawingColors[drawingController.getDrawingColorIndex()]
-                )
-                FloatingActionButton(
-                    onClick = {
-                        if (drawingController.getDrawingMode() != DrawingMode.Pen) {
-                            drawingController.setPenMode()
-                        } else {
-                            drawingController.cycleDrawingColor()
-                        }
-                    },
-                    containerColor = if (penColor == Color.White) Color.Black else Color.White,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.pen),
-                        contentDescription = "Pen",
-                        modifier = Modifier.size(26.dp),
-                        tint = penColor
+                val buttonContainerColor = drawingController.getDisplayColor(Color.White)
+                val buttonContentColor = drawingController.getDisplayColor(Color.Black)
+
+                if (toolbarVisible) {
+                    val penColor = drawingController.getDisplayColor(
+                        AppSettings.AvailableDrawingColors[drawingController.getDrawingColorIndex()]
                     )
+                    FloatingActionButton(
+                        onClick = {
+                            if (drawingController.getDrawingMode() != DrawingMode.Pen) {
+                                drawingController.setPenMode()
+                            } else {
+                                drawingController.cycleDrawingColor()
+                            }
+                        },
+                        containerColor = buttonContainerColor,
+                        contentColor = buttonContentColor,
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.pen),
+                            contentDescription = "Pen",
+                            modifier = Modifier.size(26.dp),
+                            tint = penColor
+                        )
+                    }
+                    FloatingActionButton(
+                        onClick = {
+                            drawingController.cycleStrokeWidth()
+                        },
+                        containerColor = buttonContainerColor,
+                        contentColor = buttonContentColor,
+                    ) {
+                        val sizeIcons = listOf(R.drawable.size1, R.drawable.size2)
+                        Icon(
+                            painter = painterResource(sizeIcons[drawingController.getStrokeWidthIndex()]),
+                            contentDescription = "Stroke Width",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                    FloatingActionButton(
+                        onClick = {
+                            drawingController.setEraseMode()
+                        },
+                        containerColor = buttonContainerColor,
+                        contentColor = buttonContentColor,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.eraser),
+                            contentDescription = "Eraser",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
+                    FloatingActionButton(
+                        onClick = {
+                            drawingController.clearAll()
+                        },
+                        containerColor = buttonContainerColor,
+                        contentColor = buttonContentColor,
+                    ) {
+                        Icon(
+                            painterResource(R.drawable.trash),
+                            contentDescription = "Clear All",
+                            modifier = Modifier.size(26.dp)
+                        )
+                    }
                 }
-                FloatingActionButton(
-                    onClick = {
-                        drawingController.cycleStrokeWidth()
-                    },
-                ) {
-                    val sizeIcons = listOf(R.drawable.size1, R.drawable.size2)
-                    Icon(
-                        painter = painterResource(sizeIcons[drawingController.getStrokeWidthIndex()]),
-                        contentDescription = "Stroke Width",
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-                FloatingActionButton(
-                    onClick = {
-                        drawingController.setEraseMode()
-                    },
+                androidx.compose.material3.SmallFloatingActionButton(
+                    onClick = { toolbarVisible = !toolbarVisible },
+                    containerColor = Color.Transparent,
+                    contentColor = buttonContentColor,
+                    elevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(
+                        defaultElevation = 0.dp,
+                        pressedElevation = 0.dp,
+                        focusedElevation = 0.dp,
+                        hoveredElevation = 0.dp,
+                    ),
                 ) {
                     Icon(
-                        painterResource(R.drawable.eraser),
-                        contentDescription = "Eraser",
-                        modifier = Modifier.size(26.dp)
-                    )
-                }
-                FloatingActionButton(
-                    onClick = {
-                        drawingController.clearAll()
-                    },
-                ) {
-                    Icon(
-                        painterResource(R.drawable.trash),
-                        contentDescription = "Clear All",
-                        modifier = Modifier.size(26.dp)
+                        painter = painterResource(R.drawable.toolbar_toggle),
+                        contentDescription = if (toolbarVisible) "Hide toolbar" else "Show toolbar",
+                        modifier = Modifier
+                            .size(26.dp)
+                            .rotate(if (toolbarVisible) 0f else 180f)
                     )
                 }
             }
