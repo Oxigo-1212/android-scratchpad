@@ -14,11 +14,14 @@ import androidx.activity.compose.setContent
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.annotation.RequiresApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.*
 import androidx.compose.material3.*
@@ -36,9 +39,14 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.toSize
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupProperties
 import androidx.core.view.ViewCompat.*
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
@@ -266,6 +274,8 @@ private fun OptionsMenu(
     modifier: Modifier = Modifier,
 ) {
     var expanded by remember { mutableStateOf(false) }
+    val menuColor = if (iconTint == Color.Black) Color(0xFFF7F7F5) else Color(0xFF181818)
+    val menuOffset = with(LocalDensity.current) { 48.dp.roundToPx() }
 
     Box(modifier = modifier) {
         androidx.compose.material3.IconButton(onClick = { expanded = true }) {
@@ -275,32 +285,61 @@ private fun OptionsMenu(
                 tint = iconTint,
             )
         }
-        androidx.compose.material3.DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = { expanded = false },
-        ) {
-            androidx.compose.material3.DropdownMenuItem(
-                text = { androidx.compose.material3.Text("Reverse colors") },
-                onClick = {
-                    expanded = false
-                    onReverseColors()
-                },
-            )
-            androidx.compose.material3.DropdownMenuItem(
-                text = { androidx.compose.material3.Text("Export PNG") },
-                onClick = {
-                    expanded = false
-                    onExportPng()
-                },
-            )
-            androidx.compose.material3.DropdownMenuItem(
-                text = { androidx.compose.material3.Text("Export PDF") },
-                onClick = {
-                    expanded = false
-                    onExportPdf()
-                },
-            )
+        if (expanded) {
+            Popup(
+                alignment = androidx.compose.ui.Alignment.TopEnd,
+                offset = IntOffset(0, menuOffset),
+                onDismissRequest = { expanded = false },
+                properties = PopupProperties(focusable = true),
+            ) {
+                androidx.compose.material3.Surface(
+                    modifier = Modifier.width(152.dp),
+                    shape = RoundedCornerShape(18.dp),
+                    color = menuColor,
+                    contentColor = iconTint,
+                    border = BorderStroke(1.dp, iconTint.copy(alpha = 0.10f)),
+                    shadowElevation = 6.dp,
+                ) {
+                    Column(
+                        verticalArrangement = Arrangement.spacedBy(2.dp),
+                        modifier = Modifier.padding(6.dp),
+                    ) {
+                        MinimalMenuItem("Reverse colors", iconTint) {
+                            expanded = false
+                            onReverseColors()
+                        }
+                        MinimalMenuItem("Export PNG", iconTint) {
+                            expanded = false
+                            onExportPng()
+                        }
+                        MinimalMenuItem("Export PDF", iconTint) {
+                            expanded = false
+                            onExportPdf()
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun MinimalMenuItem(label: String, color: Color, onClick: () -> Unit) {
+    Box(
+        contentAlignment = androidx.compose.ui.Alignment.CenterStart,
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 14.dp),
+    ) {
+        androidx.compose.material3.Text(
+            text = label,
+            color = color,
+            style = androidx.compose.material3.MaterialTheme.typography.bodyMedium,
+            fontWeight = FontWeight.Medium,
+        )
     }
 }
 
