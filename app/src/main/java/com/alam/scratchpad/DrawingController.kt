@@ -11,11 +11,9 @@ class DrawingController(private val model: DrawingModel) {
         //model.strokeWidth = AppSettings.DefaultStrokeWidth
         //model.drawingColor = AppSettings.DefaultDrawingColor
         model.drawingColor = AppSettings.AvailableDrawingColors[model.cycleDrawingColorCurrentIndex]
-        model.strokeWidth = AppSettings.AvailableStrokeWidths[model.cycleStrokeWidthCurrentIndex]
     }
     fun setEraseMode() {
         model.drawingMode = DrawingMode.Erase
-        model.strokeWidth = AppSettings.AvailableStrokeWidths[model.cycleStrokeWidthCurrentIndex]
         model.drawingColor = AppSettings.DefaultBackgroundColor
     }
     fun clearAll() {
@@ -29,10 +27,11 @@ class DrawingController(private val model: DrawingModel) {
         model.cycleDrawingColorCurrentIndex = nextIndex
         model.drawingColor = AppSettings.AvailableDrawingColors[nextIndex]
     }
-    fun cycleStrokeWidth() {
-        val nextIndex = (model.cycleStrokeWidthCurrentIndex + 1) % AppSettings.AvailableStrokeWidths.size
-        model.cycleStrokeWidthCurrentIndex = nextIndex
-        model.strokeWidth = AppSettings.AvailableStrokeWidths[nextIndex]
+    fun setStrokeWidth(strokeWidth: Float) {
+        model.strokeWidth = strokeWidth.coerceIn(
+            AppSettings.MinStrokeWidth,
+            AppSettings.MaxStrokeWidth,
+        )
     }
     fun setDarkCanvas(enabled: Boolean) {
         model.darkCanvas = enabled
@@ -129,9 +128,7 @@ class DrawingController(private val model: DrawingModel) {
             model.strokeWidth * AppSettings.EraserStrokeWidthMultiplier / model.scale
         }
     }
-    fun getStrokeWidthIndex(): Int {
-        return model.cycleStrokeWidthCurrentIndex
-    }
+    fun getSelectedStrokeWidth() = model.strokeWidth
     fun getDrawingColorIndex(): Int {
         return model.cycleDrawingColorCurrentIndex
     }

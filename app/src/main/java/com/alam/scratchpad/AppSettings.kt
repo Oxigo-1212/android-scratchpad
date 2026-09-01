@@ -14,12 +14,9 @@ class AppSettings {
             Color(0xFFF44546), //Color.Red,
         )
 
-        val AvailableStrokeWidths = listOf(
-            16f,
-            48f,
-        )
-
-        val DefaultStrokeWidth = AvailableStrokeWidths[0]
+        const val MinStrokeWidth = 1f
+        const val MaxStrokeWidth = 64f
+        const val DefaultStrokeWidth = 16f
 
         val EraserStrokeWidthMultiplier = 3f
 

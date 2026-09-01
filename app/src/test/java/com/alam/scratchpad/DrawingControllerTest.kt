@@ -21,4 +21,15 @@ class DrawingControllerTest {
         assertEquals(Color.Black, controller.getDisplayColor(Color.Black))
         assertEquals(Color.White, controller.getDisplayColor(Color.White))
     }
+
+    @Test
+    fun selectedStrokeWidthSurvivesToolChanges() {
+        val controller = DrawingController(DrawingModel())
+
+        controller.setStrokeWidth(27f)
+        controller.setEraseMode()
+        controller.setPenMode()
+
+        assertEquals(27f, controller.getSelectedStrokeWidth())
+    }
 }

@@ -22,6 +22,5 @@ class DrawingModel {
     var drawingColor by mutableStateOf(AppSettings.DefaultDrawingColor)
 
     var cycleDrawingColorCurrentIndex by mutableStateOf(0)
-    var cycleStrokeWidthCurrentIndex by mutableStateOf(0)
 
 }

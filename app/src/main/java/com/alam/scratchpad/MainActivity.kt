@@ -1,6 +1,5 @@
 package com.alam.scratchpad
 
-import android.annotation.SuppressLint
 import android.content.Context
 import android.content.res.Configuration
 import android.net.Uri
@@ -18,9 +17,12 @@ import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.rememberTransformableState
 import androidx.compose.foundation.gestures.transformable
+import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.material.*
@@ -29,15 +31,17 @@ import androidx.compose.runtime.*
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.*
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.pointerInteropFilter
 import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.painterResource
@@ -53,6 +57,7 @@ import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.alam.scratchpad.ui.theme.ScratchPadTheme
 import java.io.OutputStream
+import kotlin.math.roundToInt
 
 
 class MainActivity : ComponentActivity() {
@@ -120,14 +125,11 @@ class MainActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
-@SuppressLint("UnusedMaterialScaffoldPaddingParameter", "UnusedMaterial3ScaffoldPaddingParameter")
 @Composable
 fun App(
     drawingController: DrawingController,
     onDarkCanvasChanged: (Boolean) -> Unit = {},
 ) {
-    var toolbarVisible by rememberSaveable { mutableStateOf(true) }
     val context = LocalContext.current
     val exporter = remember(drawingController) { DrawingExporter(drawingController) }
     val pngLauncher = rememberLauncherForActivityResult(
@@ -137,124 +139,34 @@ fun App(
         ActivityResultContracts.CreateDocument()
     ) { uri -> export(context, uri, exporter::writePdf) }
 
-    Scaffold(
-        floatingActionButtonPosition = if (toolbarVisible) FabPosition.Center else FabPosition.End,
-        floatingActionButton = {
-            Row(
-                horizontalArrangement = Arrangement.spacedBy(12.dp),
-                verticalAlignment = androidx.compose.ui.Alignment.CenterVertically,
+    Box(modifier = Modifier.fillMaxSize()) {
+        ScratchPadCanvas(drawingController = drawingController)
+        OptionsMenu(
+            iconTint = drawingController.getDisplayColor(Color.Black),
+            onReverseColors = {
+                onDarkCanvasChanged(drawingController.toggleDarkCanvas())
+            },
+            onExportPng = { pngLauncher.launch("scratchpad.png") },
+            onExportPdf = { pdfLauncher.launch("scratchpad.pdf") },
+            modifier = Modifier
+                .align(androidx.compose.ui.Alignment.TopEnd)
+                .padding(8.dp)
+        )
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .mandatorySystemGesturesPadding()
+        ) {
+            var safeAreaSize by remember { mutableStateOf(IntSize.Zero) }
+            Box(
                 modifier = Modifier
-                    .alpha(0.7f)
-                    .mandatorySystemGesturesPadding()
+                    .fillMaxSize()
+                    .onGloballyPositioned { safeAreaSize = it.size }
             ) {
-                val buttonContentColor = drawingController.getDisplayColor(Color.Black)
-                val buttonElevation = androidx.compose.material3.FloatingActionButtonDefaults.elevation(
-                    defaultElevation = 0.dp,
-                    pressedElevation = 0.dp,
-                    focusedElevation = 0.dp,
-                    hoveredElevation = 0.dp,
-                )
-
-                if (toolbarVisible) {
-                    val penColor = drawingController.getDisplayColor(
-                        AppSettings.AvailableDrawingColors[drawingController.getDrawingColorIndex()]
-                    )
-                    FloatingActionButton(
-                        onClick = {
-                            if (drawingController.getDrawingMode() != DrawingMode.Pen) {
-                                drawingController.setPenMode()
-                            } else {
-                                drawingController.cycleDrawingColor()
-                            }
-                        },
-                        containerColor = Color.Transparent,
-                        contentColor = buttonContentColor,
-                        elevation = buttonElevation,
-                    ) {
-                        Icon(
-                            painter = painterResource(R.drawable.pen),
-                            contentDescription = "Pen",
-                            modifier = Modifier.size(26.dp),
-                            tint = penColor
-                        )
-                    }
-                    FloatingActionButton(
-                        onClick = {
-                            drawingController.cycleStrokeWidth()
-                        },
-                        containerColor = Color.Transparent,
-                        contentColor = buttonContentColor,
-                        elevation = buttonElevation,
-                    ) {
-                        val sizeIcons = listOf(R.drawable.size1, R.drawable.size2)
-                        Icon(
-                            painter = painterResource(sizeIcons[drawingController.getStrokeWidthIndex()]),
-                            contentDescription = "Stroke Width",
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-                    FloatingActionButton(
-                        onClick = {
-                            drawingController.setEraseMode()
-                        },
-                        containerColor = Color.Transparent,
-                        contentColor = buttonContentColor,
-                        elevation = buttonElevation,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.eraser),
-                            contentDescription = "Eraser",
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-                    FloatingActionButton(
-                        onClick = {
-                            drawingController.clearAll()
-                        },
-                        containerColor = Color.Transparent,
-                        contentColor = buttonContentColor,
-                        elevation = buttonElevation,
-                    ) {
-                        Icon(
-                            painterResource(R.drawable.trash),
-                            contentDescription = "Clear All",
-                            modifier = Modifier.size(26.dp)
-                        )
-                    }
-                }
-                androidx.compose.material3.SmallFloatingActionButton(
-                    onClick = { toolbarVisible = !toolbarVisible },
-                    containerColor = Color.Transparent,
-                    contentColor = buttonContentColor,
-                    elevation = buttonElevation,
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.toolbar_toggle),
-                        contentDescription = if (toolbarVisible) "Hide toolbar" else "Show toolbar",
-                        modifier = Modifier
-                            .size(26.dp)
-                            .rotate(if (toolbarVisible) 0f else 180f)
-                    )
-                }
-            }
-        },
-        content = {
-            Box(modifier = Modifier.fillMaxSize()) {
-                ScratchPadCanvas(drawingController = drawingController)
-                OptionsMenu(
-                    iconTint = drawingController.getDisplayColor(Color.Black),
-                    onReverseColors = {
-                        onDarkCanvasChanged(drawingController.toggleDarkCanvas())
-                    },
-                    onExportPng = { pngLauncher.launch("scratchpad.png") },
-                    onExportPdf = { pdfLauncher.launch("scratchpad.pdf") },
-                    modifier = Modifier
-                        .align(androidx.compose.ui.Alignment.TopEnd)
-                        .padding(8.dp)
-                )
+                FloatingToolRail(drawingController, safeAreaSize)
             }
         }
-    )
+    }
 
 //    if (AppSettings.BackButtonDisabled) {
 //        val context = LocalContext.current
@@ -263,6 +175,236 @@ fun App(
 //            toast.show()
 //        }
 //    }
+}
+
+@Composable
+private fun FloatingToolRail(
+    drawingController: DrawingController,
+    safeAreaSize: IntSize,
+) {
+    var expanded by rememberSaveable { mutableStateOf(true) }
+    var offsetX by rememberSaveable { mutableStateOf(0) }
+    var offsetY by rememberSaveable { mutableStateOf(Int.MIN_VALUE) }
+    var thicknessPickerVisible by remember { mutableStateOf(false) }
+    var railSize by remember { mutableStateOf(IntSize.Zero) }
+    val density = LocalDensity.current
+    val margin = with(density) { 12.dp.roundToPx() }
+    val maxX = (safeAreaSize.width - railSize.width - margin).coerceAtLeast(margin)
+    val maxY = (safeAreaSize.height - railSize.height - margin).coerceAtLeast(margin)
+
+    LaunchedEffect(safeAreaSize, railSize) {
+        if (safeAreaSize == IntSize.Zero || railSize == IntSize.Zero) return@LaunchedEffect
+        offsetX = offsetX.coerceIn(margin, maxX)
+        offsetY = if (offsetY == Int.MIN_VALUE) {
+            ((safeAreaSize.height - railSize.height) / 2).coerceIn(margin, maxY)
+        } else {
+            offsetY.coerceIn(margin, maxY)
+        }
+    }
+
+    val contentColor = drawingController.getDisplayColor(Color.Black)
+    val penColor = drawingController.getDisplayColor(
+        AppSettings.AvailableDrawingColors[drawingController.getDrawingColorIndex()]
+    )
+    val displayedY = if (offsetY == Int.MIN_VALUE) 0 else offsetY
+    val dragModifier = Modifier.pointerInput(safeAreaSize, railSize) {
+        detectDragGestures { change, dragAmount ->
+            change.consume()
+            offsetX = (offsetX + dragAmount.x.roundToInt()).coerceIn(margin, maxX)
+            val currentY = if (offsetY == Int.MIN_VALUE) displayedY else offsetY
+            offsetY = (currentY + dragAmount.y.roundToInt()).coerceIn(margin, maxY)
+        }
+    }
+
+    androidx.compose.material3.Surface(
+        modifier = Modifier
+            .offset { IntOffset(offsetX, displayedY) }
+            .onGloballyPositioned { railSize = it.size },
+        color = Color.Transparent,
+        shadowElevation = 0.dp,
+    ) {
+        Column(
+            horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+            modifier = Modifier
+                .width(56.dp)
+                .padding(4.dp),
+        ) {
+            ToolRailButton(
+                description = if (expanded) "Collapse toolbar" else "Expand toolbar",
+                onClick = { expanded = !expanded },
+                modifier = dragModifier,
+            ) {
+                Icon(
+                    painter = painterResource(R.drawable.toolbar_toggle),
+                    contentDescription = null,
+                    tint = contentColor,
+                    modifier = Modifier.size(26.dp),
+                )
+            }
+            if (expanded) {
+                Spacer(Modifier.height(2.dp))
+                ToolRailButton(
+                    description = "Pen",
+                    onClick = {
+                        if (drawingController.getDrawingMode() != DrawingMode.Pen) {
+                            drawingController.setPenMode()
+                        } else {
+                            drawingController.cycleDrawingColor()
+                        }
+                    },
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.pen),
+                        contentDescription = null,
+                        tint = penColor,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+                ToolRailButton(
+                    description = "Stroke width ${drawingController.getSelectedStrokeWidth().roundToInt()}",
+                    onClick = { thicknessPickerVisible = true },
+                ) {
+                    androidx.compose.material3.Text(
+                        text = drawingController.getSelectedStrokeWidth().roundToInt().toString(),
+                        color = contentColor,
+                        style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
+                    )
+                    if (thicknessPickerVisible) {
+                        ThicknessPicker(
+                            value = drawingController.getSelectedStrokeWidth(),
+                            color = contentColor,
+                            opensRight = offsetX + railSize.width / 2 < safeAreaSize.width / 2,
+                            onValueChange = drawingController::setStrokeWidth,
+                            onDismiss = { thicknessPickerVisible = false },
+                        )
+                    }
+                }
+                ToolRailButton(
+                    description = "Eraser",
+                    onClick = drawingController::setEraseMode,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.eraser),
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+                Spacer(Modifier.height(6.dp))
+                Box(
+                    Modifier
+                        .width(24.dp)
+                        .height(1.dp)
+                        .background(contentColor.copy(alpha = 0.14f))
+                )
+                Spacer(Modifier.height(6.dp))
+                ToolRailButton(
+                    description = "Clear All",
+                    onClick = drawingController::clearAll,
+                ) {
+                    Icon(
+                        painter = painterResource(R.drawable.trash),
+                        contentDescription = null,
+                        tint = contentColor,
+                        modifier = Modifier.size(26.dp),
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun ToolRailButton(
+    description: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    Box(
+        contentAlignment = androidx.compose.ui.Alignment.Center,
+        modifier = Modifier
+            .size(48.dp)
+            .then(modifier)
+            .clip(RoundedCornerShape(14.dp))
+            .semantics { contentDescription = description }
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick,
+            ),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun ThicknessPicker(
+    value: Float,
+    color: Color,
+    opensRight: Boolean,
+    onValueChange: (Float) -> Unit,
+    onDismiss: () -> Unit,
+) {
+    val density = LocalDensity.current
+    val offset = with(density) { 60.dp.roundToPx() } * if (opensRight) 1 else -1
+    val previewSize = with(density) { value.toDp() }
+    val panelColor = if (color == Color.Black) Color(0xFFF7F7F5) else Color(0xFF181818)
+
+    Popup(
+        alignment = if (opensRight) {
+            androidx.compose.ui.Alignment.CenterStart
+        } else {
+            androidx.compose.ui.Alignment.CenterEnd
+        },
+        offset = IntOffset(offset, 0),
+        onDismissRequest = onDismiss,
+        properties = PopupProperties(focusable = true),
+    ) {
+        androidx.compose.material3.Surface(
+            shape = RoundedCornerShape(18.dp),
+            color = panelColor,
+            contentColor = color,
+            border = BorderStroke(1.dp, color.copy(alpha = 0.10f)),
+            shadowElevation = 6.dp,
+        ) {
+            Column(
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                modifier = Modifier
+                    .width(240.dp)
+                    .padding(horizontal = 18.dp, vertical = 14.dp),
+            ) {
+                Box(
+                    contentAlignment = androidx.compose.ui.Alignment.Center,
+                    modifier = Modifier.size(34.dp),
+                ) {
+                    Box(
+                        Modifier
+                            .size(previewSize)
+                            .background(color, CircleShape)
+                    )
+                }
+                androidx.compose.material3.Slider(
+                    value = value,
+                    onValueChange = { onValueChange(it.roundToInt().toFloat()) },
+                    valueRange = AppSettings.MinStrokeWidth..AppSettings.MaxStrokeWidth,
+                    steps = (AppSettings.MaxStrokeWidth - AppSettings.MinStrokeWidth).roundToInt() - 1,
+                    colors = androidx.compose.material3.SliderDefaults.colors(
+                        thumbColor = color,
+                        activeTrackColor = color,
+                        inactiveTrackColor = color.copy(alpha = 0.18f),
+                    ),
+                )
+                androidx.compose.material3.Text(
+                    text = value.roundToInt().toString(),
+                    color = color,
+                    style = androidx.compose.material3.MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Medium,
+                )
+            }
+        }
+    }
 }
 
 @Composable
