@@ -1,11 +1,14 @@
 package com.alam.scratchpad
 
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
 import android.util.AtomicFile
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
+import java.io.ByteArrayOutputStream
 import java.io.DataInput
 import java.io.DataInputStream
 import java.io.DataOutput
@@ -13,9 +16,12 @@ import java.io.DataOutputStream
 import java.io.File
 import java.io.FileNotFoundException
 import java.io.IOException
+import java.io.InputStream
+import java.io.OutputStream
 
 class DrawingStorage(directory: File) {
     private val atomicFile = AtomicFile(File(directory, FILE_NAME))
+    private val imageFile = AtomicFile(File(directory, IMAGE_FILE_NAME))
 
     fun load(): List<DrawPath> {
         return try {
@@ -40,8 +46,83 @@ class DrawingStorage(directory: File) {
         }
     }
 
+    fun loadImage(): Bitmap? = try {
+        imageFile.openRead().use(BitmapFactory::decodeStream)
+    } catch (_: FileNotFoundException) {
+        null
+    }
+
+    fun saveImage(image: Bitmap?) {
+        if (image == null) {
+            imageFile.delete()
+            return
+        }
+        val fileOutput = imageFile.startWrite()
+        try {
+            if (!image.compress(Bitmap.CompressFormat.PNG, 100, fileOutput)) {
+                throw IOException("Could not save imported image")
+            }
+            imageFile.finishWrite(fileOutput)
+        } catch (error: Exception) {
+            imageFile.failWrite(fileOutput)
+            throw error
+        }
+    }
+
     companion object {
         private const val FILE_NAME = "drawing.bin"
+        private const val IMAGE_FILE_NAME = "imported_image.png"
+    }
+}
+
+internal data class DrawingProject(val paths: List<DrawPath>, val image: Bitmap?)
+
+internal object DrawingProjectCodec {
+    const val MIME_TYPE = "application/vnd.com.alam.scratchpad"
+    private const val MAGIC = 0x5350504A // SPPJ
+    private const val VERSION = 1
+    private const val MAX_IMAGE_BYTES = 32 * 1024 * 1024
+
+    fun write(output: OutputStream, paths: List<DrawPath>, image: Bitmap?) {
+        val data = DataOutputStream(BufferedOutputStream(output))
+        data.writeInt(MAGIC)
+        data.writeInt(VERSION)
+        DrawingCodec.write(data, paths)
+        if (image == null) {
+            data.writeInt(0)
+        } else {
+            val bytes = ByteArrayOutputStream().also {
+                if (!image.compress(Bitmap.CompressFormat.PNG, 100, it)) {
+                    throw IOException("Could not encode project image")
+                }
+            }.toByteArray()
+            if (bytes.size > MAX_IMAGE_BYTES) throw IOException("Project image is too large")
+            data.writeInt(bytes.size)
+            data.write(bytes)
+        }
+        data.flush()
+    }
+
+    fun read(input: InputStream): DrawingProject {
+        val data = DataInputStream(BufferedInputStream(input))
+        if (data.readInt() != MAGIC) throw IOException("Invalid project file")
+        if (data.readInt() != VERSION) throw IOException("Unsupported project version")
+        val paths = DrawingCodec.read(data)
+        val imageLength = data.readInt()
+        if (imageLength !in 0..MAX_IMAGE_BYTES) throw IOException("Invalid project image size")
+        if (imageLength == 0) return DrawingProject(paths, null)
+        val bytes = ByteArray(imageLength).also(data::readFully)
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        BitmapFactory.decodeByteArray(bytes, 0, bytes.size, bounds)
+        if (bounds.outWidth <= 0 || bounds.outHeight <= 0) throw IOException("Invalid project image")
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = imageSampleSize(bounds.outWidth, bounds.outHeight)
+        }
+        return DrawingProject(
+            paths,
+            BitmapFactory.decodeByteArray(bytes, 0, bytes.size, options)
+                ?: throw IOException("Could not decode project image"),
+        )
     }
 }
 

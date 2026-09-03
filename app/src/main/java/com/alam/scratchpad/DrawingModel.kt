@@ -6,6 +6,7 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.ImageBitmap
 
 class DrawingModel {
     var fullSize by mutableStateOf(Size.Zero) // unpadded size without exclusions
@@ -15,6 +16,7 @@ class DrawingModel {
 
     var points = mutableStateListOf<Offset>() // current path points, possibly not smoothed yet
     var paths = mutableStateListOf<DrawPath>() // smoothed paths, completed
+    var importedImage by mutableStateOf<ImageBitmap?>(null)
 
     var strokeWidth by mutableStateOf(AppSettings.DefaultStrokeWidth)
     var drawingMode by mutableStateOf(DrawingMode.Pen)

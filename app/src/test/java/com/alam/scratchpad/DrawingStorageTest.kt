@@ -3,6 +3,7 @@ package com.alam.scratchpad
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.fail
 import org.junit.Test
 import java.io.ByteArrayInputStream
@@ -40,5 +41,20 @@ class DrawingStorageTest {
             fail("Unsupported versions must be rejected")
         } catch (_: IOException) {
         }
+    }
+
+    @Test
+    fun editableProjectRoundTripsPathsWithoutFlatteningThem() {
+        val paths = listOf(
+            DrawPath(listOf(Offset(1f, 2f), Offset(3f, 4f)), Color.Black, 8f)
+        )
+        val bytes = ByteArrayOutputStream().also {
+            DrawingProjectCodec.write(it, paths, null)
+        }.toByteArray()
+
+        val restored = DrawingProjectCodec.read(ByteArrayInputStream(bytes))
+
+        assertEquals(paths, restored.paths)
+        assertNull(restored.image)
     }
 }

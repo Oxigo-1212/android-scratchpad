@@ -4,6 +4,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
 
 class DrawingController(private val model: DrawingModel) {
@@ -24,6 +25,7 @@ class DrawingController(private val model: DrawingModel) {
     fun clearAll() {
         model.points.clear()
         model.paths.clear()
+        model.importedImage = null
         model.offset = Offset.Zero
         setPenMode()
     }
@@ -106,6 +108,10 @@ class DrawingController(private val model: DrawingModel) {
     fun getDrawPaths(): List<DrawPath> {
         return model.paths
     }
+    fun setImportedImage(image: ImageBitmap?) {
+        model.importedImage = image
+    }
+    fun getImportedImage(): ImageBitmap? = model.importedImage
     fun getPathsIn(area: List<Offset>): Set<Int> = model.paths.mapIndexedNotNull { index, path ->
         index.takeIf {
             path.points.isNotEmpty() && path.points.all { point -> pointInPolygon(point, area) }

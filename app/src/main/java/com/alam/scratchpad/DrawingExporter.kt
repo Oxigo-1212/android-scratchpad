@@ -4,10 +4,14 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.graphics.Paint
 import android.graphics.Path
+import android.graphics.RectF
 import android.graphics.pdf.PdfDocument
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.asAndroidBitmap
 import androidx.compose.ui.graphics.toArgb
+import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.OutputStream
 import kotlin.math.roundToInt
@@ -33,7 +37,15 @@ class DrawingExporter(private val controller: DrawingController) {
             val page = document.startPage(PdfDocument.PageInfo.Builder(width, height, 1).create())
             render(page.canvas)
             document.finishPage(page)
-            document.writeTo(output)
+            val pdf = ByteArrayOutputStream().also(document::writeTo)
+            val project = ByteArrayOutputStream().also {
+                DrawingProjectCodec.write(
+                    it,
+                    controller.getDrawPaths(),
+                    controller.getImportedImage()?.asAndroidBitmap(),
+                )
+            }
+            EditablePdf.embed(pdf.toByteArray(), project.toByteArray(), output)
         } finally {
             document.close()
         }
@@ -58,6 +70,17 @@ class DrawingExporter(private val controller: DrawingController) {
         }
 
         canvas.drawColor(controller.getDrawingBackground().toArgb())
+        controller.getImportedImage()?.let { image ->
+            val bounds = fitImageRect(image.width, image.height, size)
+            val topLeft = mapToViewport(bounds.topLeft, size, scale, offset)
+            val bottomRight = mapToViewport(bounds.bottomRight, size, scale, offset)
+            canvas.drawBitmap(
+                image.asAndroidBitmap(),
+                null,
+                RectF(topLeft.x, topLeft.y, bottomRight.x, bottomRight.y),
+                Paint(Paint.ANTI_ALIAS_FLAG or Paint.FILTER_BITMAP_FLAG),
+            )
+        }
         for (drawPath in controller.getDrawPaths()) {
             val path = Path()
             drawPath.points.forEachIndexed { index, point ->
@@ -75,3 +98,14 @@ internal fun mapToViewport(point: Offset, size: Size, scale: Float, offset: Offs
     (point.x + offset.x - size.width / 2) * scale + size.width / 2,
     (point.y + offset.y - size.height / 2) * scale + size.height / 2,
 )
+
+internal fun fitImageRect(imageWidth: Int, imageHeight: Int, canvasSize: Size): Rect {
+    require(imageWidth > 0 && imageHeight > 0 && canvasSize.width > 0 && canvasSize.height > 0)
+    val scale = minOf(canvasSize.width / imageWidth, canvasSize.height / imageHeight)
+    val width = imageWidth * scale
+    val height = imageHeight * scale
+    return Rect(
+        offset = Offset((canvasSize.width - width) / 2, (canvasSize.height - height) / 2),
+        size = Size(width, height),
+    )
+}

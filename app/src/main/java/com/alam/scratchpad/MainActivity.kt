@@ -2,6 +2,10 @@ package com.alam.scratchpad
 
 import android.content.Context
 import android.content.res.Configuration
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color as AndroidColor
+import android.graphics.pdf.PdfRenderer
 import android.net.Uri
 import android.os.Build
 import android.os.Bundle
@@ -56,7 +60,11 @@ import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsCompat
 import androidx.core.view.WindowInsetsControllerCompat
 import com.alam.scratchpad.ui.theme.ScratchPadTheme
+import com.tom_roush.pdfbox.android.PDFBoxResourceLoader
 import java.io.OutputStream
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import kotlin.math.roundToInt
 
 
@@ -67,6 +75,7 @@ class MainActivity : ComponentActivity() {
     @RequiresApi(Build.VERSION_CODES.R)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        PDFBoxResourceLoader.init(applicationContext)
 
         val preferences = getSharedPreferences(PREFERENCES_NAME, MODE_PRIVATE)
         drawingController.setDarkCanvas(preferences.getBoolean(PREF_DARK_CANVAS, true))
@@ -75,6 +84,9 @@ class MainActivity : ComponentActivity() {
         runCatching { drawingStorage.load() }
             .onSuccess(drawingController::restoreDrawPaths)
             .onFailure { Log.e(TAG, "Could not load drawing", it) }
+        runCatching { drawingStorage.loadImage() }
+            .onSuccess { it?.let { bitmap -> drawingController.setImportedImage(bitmap.asImageBitmap()) } }
+            .onFailure { Log.e(TAG, "Could not load imported image", it) }
 
         // Can show the drawing behind the status/navigation bars
         WindowCompat.setDecorFitsSystemWindows(window, false)
@@ -108,7 +120,10 @@ class MainActivity : ComponentActivity() {
 
     override fun onStop() {
         // ponytail: one atomic lifecycle write; add debounced background saves if large canvases make this slow.
-        runCatching { drawingStorage.save(drawingController.getDrawPaths().toList()) }
+        runCatching {
+            drawingStorage.save(drawingController.getDrawPaths().toList())
+            drawingStorage.saveImage(drawingController.getImportedImage()?.asAndroidBitmap())
+        }
             .onFailure { Log.e(TAG, "Could not save drawing", it) }
         super.onStop()
     }
@@ -138,6 +153,34 @@ fun App(
     val pdfLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument()
     ) { uri -> export(context, uri, exporter::writePdf) }
+    val projectLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument()
+    ) { uri ->
+        export(context, uri) { output ->
+            DrawingProjectCodec.write(
+                output,
+                drawingController.getDrawPaths(),
+                drawingController.getImportedImage()?.asAndroidBitmap(),
+            )
+        }
+    }
+    val importScope = rememberCoroutineScope()
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) importScope.launch {
+            runCatching {
+                withContext(Dispatchers.IO) { decodeImport(context, uri) }
+            }.onSuccess { imported ->
+                imported.paths?.let(drawingController::restoreDrawPaths)
+                drawingController.setImportedImage(imported.image?.asImageBitmap())
+                Toast.makeText(context, "Imported", Toast.LENGTH_SHORT).show()
+            }.onFailure {
+                Log.e("ScratchPadImport", "Could not import file", it)
+                Toast.makeText(context, "Import failed", Toast.LENGTH_SHORT).show()
+            }
+        }
+    }
 
     Box(modifier = Modifier.fillMaxSize()) {
         ScratchPadCanvas(drawingController = drawingController)
@@ -146,6 +189,15 @@ fun App(
             onReverseColors = {
                 onDarkCanvasChanged(drawingController.toggleDarkCanvas())
             },
+            onImport = {
+                importLauncher.launch(arrayOf(
+                    "image/*",
+                    "application/pdf",
+                    DrawingProjectCodec.MIME_TYPE,
+                    "application/octet-stream",
+                ))
+            },
+            onExportProject = { projectLauncher.launch("scratchpad.scratchpad") },
             onExportPng = { pngLauncher.launch("scratchpad.png") },
             onExportPdf = { pdfLauncher.launch("scratchpad.pdf") },
             modifier = Modifier
@@ -446,6 +498,8 @@ private fun ThicknessPicker(
 private fun OptionsMenu(
     iconTint: Color,
     onReverseColors: () -> Unit,
+    onImport: () -> Unit,
+    onExportProject: () -> Unit,
     onExportPng: () -> Unit,
     onExportPdf: () -> Unit,
     modifier: Modifier = Modifier,
@@ -484,6 +538,14 @@ private fun OptionsMenu(
                         MinimalMenuItem("Reverse colors", iconTint) {
                             expanded = false
                             onReverseColors()
+                        }
+                        MinimalMenuItem("Import", iconTint) {
+                            expanded = false
+                            onImport()
+                        }
+                        MinimalMenuItem("Export editable", iconTint) {
+                            expanded = false
+                            onExportProject()
                         }
                         MinimalMenuItem("Export PNG", iconTint) {
                             expanded = false
@@ -532,6 +594,63 @@ private fun export(context: Context, uri: Uri?, write: (OutputStream) -> Unit) {
         Toast.makeText(context, "Export failed", Toast.LENGTH_SHORT).show()
     }
 }
+
+private data class ImportedDrawing(val image: Bitmap?, val paths: List<DrawPath>? = null)
+
+private fun decodeImport(context: Context, uri: Uri): ImportedDrawing =
+    if (context.contentResolver.getType(uri) in setOf(
+            DrawingProjectCodec.MIME_TYPE,
+            "application/octet-stream",
+        )
+    ) {
+        context.contentResolver.openInputStream(uri)?.use(DrawingProjectCodec::read)
+            ?.let { ImportedDrawing(it.image, it.paths) }
+            ?: error("Could not open project")
+    } else if (context.contentResolver.getType(uri) == "application/pdf") {
+        context.contentResolver.openInputStream(uri)?.use(EditablePdf::readProject)?.let {
+            ImportedDrawing(it.image, it.paths)
+        } ?: context.contentResolver.openFileDescriptor(uri, "r")?.let { descriptor ->
+            PdfRenderer(descriptor).use { renderer ->
+                require(renderer.pageCount > 0) { "PDF has no pages" }
+                renderer.openPage(0).use { page ->
+                    val scale = minOf(
+                        1f,
+                        MAX_IMPORTED_IMAGE_DIMENSION.toFloat() / maxOf(page.width, page.height),
+                    )
+                    ImportedDrawing(Bitmap.createBitmap(
+                        (page.width * scale).roundToInt().coerceAtLeast(1),
+                        (page.height * scale).roundToInt().coerceAtLeast(1),
+                        Bitmap.Config.ARGB_8888,
+                    ).also { bitmap ->
+                        bitmap.eraseColor(AndroidColor.WHITE)
+                        page.render(bitmap, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                    })
+                }
+            }
+        } ?: error("Could not open PDF")
+    } else {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, bounds)
+        } ?: error("Could not open image")
+        require(bounds.outWidth > 0 && bounds.outHeight > 0) { "Unsupported image" }
+        val options = BitmapFactory.Options().apply {
+            inSampleSize = imageSampleSize(bounds.outWidth, bounds.outHeight)
+        }
+        ImportedDrawing(context.contentResolver.openInputStream(uri)?.use {
+            BitmapFactory.decodeStream(it, null, options)
+        } ?: error("Could not decode image"))
+    }
+
+internal fun imageSampleSize(width: Int, height: Int): Int {
+    var sample = 1
+    while (width / sample > MAX_IMPORTED_IMAGE_DIMENSION ||
+        height / sample > MAX_IMPORTED_IMAGE_DIMENSION
+    ) sample *= 2
+    return sample
+}
+
+private const val MAX_IMPORTED_IMAGE_DIMENSION = 2048
 
 @OptIn(ExperimentalComposeUiApi::class)
 @Composable
@@ -722,6 +841,18 @@ fun ScratchPadCanvas(
                     width = width,
                     cap = StrokeCap.Round,
                     join = StrokeJoin.Round
+                ),
+            )
+        }
+
+        drawingController.getImportedImage()?.let { image ->
+            val bounds = fitImageRect(image.width, image.height, size)
+            drawImage(
+                image = image,
+                dstOffset = IntOffset(bounds.left.roundToInt(), bounds.top.roundToInt()),
+                dstSize = IntSize(
+                    bounds.width.roundToInt().coerceAtLeast(1),
+                    bounds.height.roundToInt().coerceAtLeast(1),
                 ),
             )
         }
