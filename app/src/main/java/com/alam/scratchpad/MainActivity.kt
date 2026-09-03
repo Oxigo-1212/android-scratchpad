@@ -291,6 +291,41 @@ private fun FloatingToolRail(
                         modifier = Modifier.size(26.dp),
                     )
                 }
+                ToolRailButton(
+                    description = if (drawingController.getDrawingMode() == DrawingMode.Select) {
+                        "Exit select and move"
+                    } else {
+                        "Select and move"
+                    },
+                    onClick = {
+                        if (drawingController.getDrawingMode() == DrawingMode.Select) {
+                            drawingController.setPenMode()
+                        } else {
+                            drawingController.setSelectMode()
+                        }
+                    },
+                ) {
+                    Box(
+                        contentAlignment = androidx.compose.ui.Alignment.Center,
+                        modifier = Modifier
+                            .size(38.dp)
+                            .background(
+                                if (drawingController.getDrawingMode() == DrawingMode.Select) {
+                                    contentColor.copy(alpha = 0.12f)
+                                } else {
+                                    Color.Transparent
+                                },
+                                RoundedCornerShape(12.dp),
+                            ),
+                    ) {
+                        Icon(
+                            painter = painterResource(R.drawable.lasso),
+                            contentDescription = null,
+                            tint = contentColor,
+                            modifier = Modifier.size(26.dp),
+                        )
+                    }
+                }
                 Spacer(Modifier.height(6.dp))
                 Box(
                     Modifier
@@ -504,6 +539,10 @@ fun ScratchPadCanvas(
     drawingController: DrawingController
 ) {
     val drawingPointer = remember { DrawingPointerTracker() }
+    val lassoPoints = remember { mutableStateListOf<Offset>() }
+    var selection by remember { mutableStateOf<Rect?>(null) }
+    var selectedPaths by remember { mutableStateOf(emptySet<Int>()) }
+    var lastMovePoint by remember { mutableStateOf<Offset?>(null) }
     val transformState = rememberTransformableState { scalingDelta, offsetDelta, _ ->
         drawingController.updateScale(scalingDelta)
         drawingController.updateOffset(offsetDelta)
@@ -515,6 +554,16 @@ fun ScratchPadCanvas(
     val drawingBackground = drawingController.getDrawingBackground()
     val drawingColor = drawingController.getDrawingColor()
     val strokeWidth = drawingController.getStrokeWidth()
+    val drawingMode = drawingController.getDrawingMode()
+
+    LaunchedEffect(drawingMode) {
+        if (drawingMode != DrawingMode.Select) {
+            lassoPoints.clear()
+            selection = null
+            selectedPaths = emptySet()
+            lastMovePoint = null
+        }
+    }
 
     Canvas(
         modifier = Modifier
@@ -559,24 +608,52 @@ fun ScratchPadCanvas(
                             if (drawingPointer.isEraser) {
                                 drawingController.setEraseMode()
                             }
-                            drawingController.addPoint(
-                                drawingController.getMappedOffset(
-                                    Offset(event.getX(actionIndex), event.getY(actionIndex))
-                                )
+                            val point = drawingController.getMappedOffset(
+                                Offset(event.getX(actionIndex), event.getY(actionIndex))
                             )
+                            if (drawingController.getDrawingMode() == DrawingMode.Select) {
+                                val currentSelection = selection
+                                if (currentSelection != null && selectedPaths.isNotEmpty() &&
+                                    currentSelection.contains(point)
+                                ) {
+                                    lastMovePoint = point
+                                } else {
+                                    lassoPoints.clear()
+                                    lassoPoints.add(point)
+                                    selection = null
+                                    selectedPaths = emptySet()
+                                    lastMovePoint = null
+                                }
+                            } else {
+                                drawingController.addPoint(point)
+                            }
                         } else if (!drawingPointer.isStylus) {
                             drawingPointer.clear()
                             drawingController.clearPoints()
+                            lassoPoints.clear()
+                            lastMovePoint = null
+                            if (selectedPaths.isEmpty()) selection = null
                         }
                     }
                     MotionEvent.ACTION_MOVE -> {
                         val pointerIndex = event.findPointerIndex(drawingPointer.pointerId)
                         if (pointerIndex >= 0) {
-                            drawingController.addPoint(
-                                drawingController.getMappedOffset(
-                                    Offset(event.getX(pointerIndex), event.getY(pointerIndex))
-                                )
+                            val point = drawingController.getMappedOffset(
+                                Offset(event.getX(pointerIndex), event.getY(pointerIndex))
                             )
+                            if (drawingController.getDrawingMode() == DrawingMode.Select) {
+                                val previous = lastMovePoint
+                                if (previous != null) {
+                                    val amount = point - previous
+                                    drawingController.movePaths(selectedPaths, amount)
+                                    selection = selection?.moveBy(amount)
+                                    lastMovePoint = point
+                                } else {
+                                    lassoPoints.add(point)
+                                }
+                            } else {
+                                drawingController.addPoint(point)
+                            }
                         }
                     }
                     MotionEvent.ACTION_UP, MotionEvent.ACTION_POINTER_UP -> {
@@ -586,6 +663,20 @@ fun ScratchPadCanvas(
                                 event.flags and MotionEvent.FLAG_CANCELED != 0
                             if (canceled) {
                                 drawingController.clearPoints()
+                            } else if (drawingController.getDrawingMode() == DrawingMode.Select) {
+                                val point = drawingController.getMappedOffset(
+                                    Offset(event.getX(actionIndex), event.getY(actionIndex))
+                                )
+                                val previous = lastMovePoint
+                                if (previous != null) {
+                                    val amount = point - previous
+                                    drawingController.movePaths(selectedPaths, amount)
+                                    selection = selection?.moveBy(amount)
+                                } else {
+                                    lassoPoints.add(point)
+                                    selectedPaths = drawingController.getPathsIn(lassoPoints)
+                                    selection = drawingController.getBounds(selectedPaths)
+                                }
                             } else {
                                 drawingController.addPoint(
                                     drawingController.getMappedOffset(
@@ -594,12 +685,18 @@ fun ScratchPadCanvas(
                                 )
                                 drawingController.addPointsToPaths()
                             }
+                            lassoPoints.clear()
+                            lastMovePoint = null
+                            if (selectedPaths.isEmpty()) selection = null
                             drawingPointer.clear()
                         }
                     }
                     MotionEvent.ACTION_CANCEL -> {
                         drawingPointer.clear()
                         drawingController.clearPoints()
+                        lassoPoints.clear()
+                        lastMovePoint = null
+                        if (selectedPaths.isEmpty()) selection = null
                     }
                 }
 
@@ -644,8 +741,44 @@ fun ScratchPadCanvas(
             drawingController.getDisplayColor(drawingColor),
             strokeWidth
         )
+
+        if (drawingMode == DrawingMode.Select) {
+            val selectionColor = Color(0xFF3D7DFF)
+            if (lassoPoints.size > 1) {
+                val lasso = Path().apply {
+                    lassoPoints.forEachIndexed { index, point ->
+                        if (index == 0) moveTo(point.x, point.y) else lineTo(point.x, point.y)
+                    }
+                }
+                drawPath(
+                    lasso,
+                    selectionColor,
+                    style = Stroke(width = 2.dp.toPx() / scale),
+                )
+            }
+            selection?.let { selectedArea ->
+                drawRect(
+                    selectionColor.copy(alpha = 0.10f),
+                    topLeft = selectedArea.topLeft,
+                    size = selectedArea.size,
+                )
+                drawRect(
+                    selectionColor,
+                    topLeft = selectedArea.topLeft,
+                    size = selectedArea.size,
+                    style = Stroke(width = 2.dp.toPx() / scale),
+                )
+            }
+        }
     }
 }
+
+private fun Rect.moveBy(amount: Offset) = Rect(
+    left + amount.x,
+    top + amount.y,
+    right + amount.x,
+    bottom + amount.y,
+)
 
 internal class DrawingPointerTracker {
     var pointerId = MotionEvent.INVALID_POINTER_ID

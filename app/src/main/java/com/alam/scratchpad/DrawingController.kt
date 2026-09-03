@@ -1,6 +1,7 @@
 package com.alam.scratchpad
 
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -15,6 +16,10 @@ class DrawingController(private val model: DrawingModel) {
     fun setEraseMode() {
         model.drawingMode = DrawingMode.Erase
         model.drawingColor = AppSettings.DefaultBackgroundColor
+    }
+    fun setSelectMode() {
+        model.drawingMode = DrawingMode.Select
+        clearPoints()
     }
     fun clearAll() {
         model.points.clear()
@@ -101,6 +106,29 @@ class DrawingController(private val model: DrawingModel) {
     fun getDrawPaths(): List<DrawPath> {
         return model.paths
     }
+    fun getPathsIn(area: List<Offset>): Set<Int> = model.paths.mapIndexedNotNull { index, path ->
+        index.takeIf {
+            path.points.isNotEmpty() && path.points.all { point -> pointInPolygon(point, area) }
+        }
+    }.toSet()
+    fun getBounds(indices: Set<Int>): Rect? {
+        val paths = indices.mapNotNull(model.paths::getOrNull).filter { it.points.isNotEmpty() }
+        if (paths.isEmpty()) return null
+        return Rect(
+            left = paths.minOf { path -> path.points.minOf { it.x } - path.strokeWidth / 2 },
+            top = paths.minOf { path -> path.points.minOf { it.y } - path.strokeWidth / 2 },
+            right = paths.maxOf { path -> path.points.maxOf { it.x } + path.strokeWidth / 2 },
+            bottom = paths.maxOf { path -> path.points.maxOf { it.y } + path.strokeWidth / 2 },
+        )
+    }
+    fun movePaths(indices: Set<Int>, amount: Offset) {
+        if (amount == Offset.Zero) return
+        for (index in indices) {
+            model.paths[index] = model.paths[index].copy(
+                points = model.paths[index].points.map { it + amount }
+            )
+        }
+    }
     fun getOffset(): Offset {
         return model.offset
     }
@@ -132,4 +160,20 @@ class DrawingController(private val model: DrawingModel) {
     fun getDrawingColorIndex(): Int {
         return model.cycleDrawingColorCurrentIndex
     }
+}
+
+internal fun pointInPolygon(point: Offset, polygon: List<Offset>): Boolean {
+    if (polygon.size < 3) return false
+    var inside = false
+    var previous = polygon.last()
+    for (current in polygon) {
+        if ((current.y > point.y) != (previous.y > point.y) &&
+            point.x < (previous.x - current.x) * (point.y - current.y) /
+            (previous.y - current.y) + current.x
+        ) {
+            inside = !inside
+        }
+        previous = current
+    }
+    return inside
 }

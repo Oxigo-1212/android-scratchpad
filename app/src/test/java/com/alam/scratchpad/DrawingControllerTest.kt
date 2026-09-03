@@ -1,5 +1,7 @@
 package com.alam.scratchpad
 
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.graphics.Color
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
@@ -31,5 +33,28 @@ class DrawingControllerTest {
         controller.setPenMode()
 
         assertEquals(27f, controller.getSelectedStrokeWidth())
+    }
+
+    @Test
+    fun selectsAndMovesOnlyPathsInsideRectangle() {
+        val controller = DrawingController(DrawingModel())
+        controller.restoreDrawPaths(
+            listOf(
+                DrawPath(listOf(Offset(10f, 10f), Offset(20f, 20f)), Color.Black, 4f),
+                DrawPath(listOf(Offset(80f, 80f), Offset(90f, 90f)), Color.Black, 4f),
+                DrawPath(listOf(Offset(20f, 20f), Offset(60f, 60f)), Color.Black, 4f),
+            )
+        )
+
+        val selected = controller.getPathsIn(
+            listOf(Offset(0f, 0f), Offset(30f, 0f), Offset(30f, 30f), Offset(0f, 30f))
+        )
+        controller.movePaths(selected, Offset(5f, -5f))
+
+        assertEquals(setOf(0), selected)
+        assertEquals(listOf(Offset(15f, 5f), Offset(25f, 15f)), controller.getDrawPaths()[0].points)
+        assertEquals(listOf(Offset(80f, 80f), Offset(90f, 90f)), controller.getDrawPaths()[1].points)
+        assertEquals(listOf(Offset(20f, 20f), Offset(60f, 60f)), controller.getDrawPaths()[2].points)
+        assertEquals(Rect(13f, 3f, 27f, 17f), controller.getBounds(selected))
     }
 }
