@@ -20,10 +20,6 @@ class AppSettings {
 
         val EraserStrokeWidthMultiplier = 3f
 
-        val LimitScaling = true
-        val MinScaling = 0.2f
-        val MaxScaling = 2.0f
-
         val SmoothingIterations = 2
     }
 }

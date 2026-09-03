@@ -172,8 +172,7 @@ fun App(
             runCatching {
                 withContext(Dispatchers.IO) { decodeImport(context, uri) }
             }.onSuccess { imported ->
-                imported.paths?.let(drawingController::restoreDrawPaths)
-                drawingController.setImportedImage(imported.image?.asImageBitmap())
+                drawingController.replaceDrawing(imported.paths, imported.image?.asImageBitmap())
                 Toast.makeText(context, "Imported", Toast.LENGTH_SHORT).show()
             }.onFailure {
                 Log.e("ScratchPadImport", "Could not import file", it)
@@ -204,6 +203,42 @@ fun App(
                 .align(androidx.compose.ui.Alignment.TopEnd)
                 .padding(8.dp)
         )
+        androidx.compose.material3.IconButton(
+            onClick = drawingController::fitDrawingToView,
+            modifier = Modifier
+                .align(androidx.compose.ui.Alignment.TopEnd)
+                .padding(top = 8.dp, end = 56.dp),
+        ) {
+            androidx.compose.material3.Icon(
+                painter = painterResource(R.drawable.fit_screen),
+                contentDescription = "Fit drawing to screen",
+                tint = drawingController.getDisplayColor(Color.Black),
+            )
+        }
+        androidx.compose.material3.IconButton(
+            onClick = drawingController::redo,
+            modifier = Modifier
+                .align(androidx.compose.ui.Alignment.TopEnd)
+                .padding(top = 8.dp, end = 104.dp),
+        ) {
+            androidx.compose.material3.Icon(
+                painter = painterResource(R.drawable.redo),
+                contentDescription = "Redo",
+                tint = drawingController.getDisplayColor(Color.Black),
+            )
+        }
+        androidx.compose.material3.IconButton(
+            onClick = drawingController::undo,
+            modifier = Modifier
+                .align(androidx.compose.ui.Alignment.TopEnd)
+                .padding(top = 8.dp, end = 152.dp),
+        ) {
+            androidx.compose.material3.Icon(
+                painter = painterResource(R.drawable.undo),
+                contentDescription = "Undo",
+                tint = drawingController.getDisplayColor(Color.Black),
+            )
+        }
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -735,6 +770,7 @@ fun ScratchPadCanvas(
                                 if (currentSelection != null && selectedPaths.isNotEmpty() &&
                                     currentSelection.contains(point)
                                 ) {
+                                    drawingController.beginPathMove()
                                     lastMovePoint = point
                                 } else {
                                     lassoPoints.clear()
@@ -751,6 +787,7 @@ fun ScratchPadCanvas(
                             drawingController.clearPoints()
                             lassoPoints.clear()
                             lastMovePoint = null
+                            drawingController.endPathMove()
                             if (selectedPaths.isEmpty()) selection = null
                         }
                     }
@@ -806,6 +843,7 @@ fun ScratchPadCanvas(
                             }
                             lassoPoints.clear()
                             lastMovePoint = null
+                            drawingController.endPathMove()
                             if (selectedPaths.isEmpty()) selection = null
                             drawingPointer.clear()
                         }
@@ -815,6 +853,7 @@ fun ScratchPadCanvas(
                         drawingController.clearPoints()
                         lassoPoints.clear()
                         lastMovePoint = null
+                        drawingController.endPathMove()
                         if (selectedPaths.isEmpty()) selection = null
                     }
                 }

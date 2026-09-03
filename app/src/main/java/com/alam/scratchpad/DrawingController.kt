@@ -6,8 +6,16 @@ import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.ImageBitmap
 import androidx.compose.ui.graphics.Path
+import java.util.ArrayDeque
 
 class DrawingController(private val model: DrawingModel) {
+    private data class Snapshot(val paths: List<DrawPath>, val image: ImageBitmap?)
+
+    private val undoHistory = ArrayDeque<Snapshot>()
+    private val redoHistory = ArrayDeque<Snapshot>()
+    private var movingPaths = false
+    private var moveRecorded = false
+
     fun setPenMode() {
         model.drawingMode = DrawingMode.Pen
         //model.strokeWidth = AppSettings.DefaultStrokeWidth
@@ -23,6 +31,7 @@ class DrawingController(private val model: DrawingModel) {
         clearPoints()
     }
     fun clearAll() {
+        if (model.paths.isNotEmpty() || model.importedImage != null) recordUndo()
         model.points.clear()
         model.paths.clear()
         model.importedImage = null
@@ -48,10 +57,8 @@ class DrawingController(private val model: DrawingModel) {
         return model.darkCanvas
     }
     fun updateScale(delta: Float) {
-        model.scale *= delta
-        if (AppSettings.LimitScaling) {
-            model.scale = model.scale.coerceIn(AppSettings.MinScaling, AppSettings.MaxScaling)
-        }
+        val scale = model.scale * delta
+        if (scale.isFinite() && scale > 0f) model.scale = scale
     }
     fun updateOffset(delta: Offset) {
         model.offset += delta / model.scale
@@ -75,6 +82,8 @@ class DrawingController(private val model: DrawingModel) {
         return DrawPath.pathFromPoints(getSmoothedPoints())
     }
     fun addPointsToPaths() {
+        if (model.points.isEmpty()) return
+        recordUndo()
         model.paths += DrawPath(
             points = getSmoothedPoints(),
             color = model.drawingColor,
@@ -86,6 +95,17 @@ class DrawingController(private val model: DrawingModel) {
         clearPoints()
         model.paths.clear()
         model.paths.addAll(paths)
+        undoHistory.clear()
+        redoHistory.clear()
+    }
+    fun replaceDrawing(paths: List<DrawPath>?, image: ImageBitmap?) {
+        recordUndo()
+        clearPoints()
+        if (paths != null) {
+            model.paths.clear()
+            model.paths.addAll(paths)
+        }
+        model.importedImage = image
     }
     fun getMappedOffset(point: Offset): Offset {
         return Offset(
@@ -128,18 +148,69 @@ class DrawingController(private val model: DrawingModel) {
         )
     }
     fun movePaths(indices: Set<Int>, amount: Offset) {
-        if (amount == Offset.Zero) return
+        if (amount == Offset.Zero || indices.isEmpty()) return
+        if (!movingPaths || !moveRecorded) {
+            recordUndo()
+            moveRecorded = true
+        }
         for (index in indices) {
             model.paths[index] = model.paths[index].copy(
                 points = model.paths[index].points.map { it + amount }
             )
         }
     }
+    fun beginPathMove() {
+        movingPaths = true
+        moveRecorded = false
+    }
+    fun endPathMove() {
+        movingPaths = false
+        moveRecorded = false
+    }
+    fun undo() {
+        if (undoHistory.isEmpty()) return
+        pushHistory(redoHistory, snapshot())
+        applySnapshot(undoHistory.removeLast())
+    }
+    fun redo() {
+        if (redoHistory.isEmpty()) return
+        pushHistory(undoHistory, snapshot())
+        applySnapshot(redoHistory.removeLast())
+    }
     fun getOffset(): Offset {
         return model.offset
     }
     fun getScale(): Float {
         return model.scale
+    }
+    fun fitDrawingToView() {
+        val viewport = model.size
+        if (viewport.width <= 0f || viewport.height <= 0f) return
+        val pathBounds = getBounds(model.paths.indices.toSet())
+        val imageBounds = model.importedImage?.let {
+            fitImageRect(it.width, it.height, viewport)
+        }
+        val bounds = when {
+            pathBounds == null -> imageBounds
+            imageBounds == null -> pathBounds
+            else -> Rect(
+                minOf(pathBounds.left, imageBounds.left),
+                minOf(pathBounds.top, imageBounds.top),
+                maxOf(pathBounds.right, imageBounds.right),
+                maxOf(pathBounds.bottom, imageBounds.bottom),
+            )
+        }
+        if (bounds == null) {
+            model.scale = 1f
+            model.offset = Offset.Zero
+            return
+        }
+        model.scale = minOf(
+            1f,
+            viewport.width * 0.9f / bounds.width.coerceAtLeast(1f),
+            viewport.height * 0.9f / bounds.height.coerceAtLeast(1f),
+        )
+        model.offset = Offset(viewport.width / 2, viewport.height / 2) - bounds.center
     }
     fun getDrawingBackground(): Color {
         return if (model.darkCanvas) Color.Black else Color.White
@@ -165,6 +236,31 @@ class DrawingController(private val model: DrawingModel) {
     fun getSelectedStrokeWidth() = model.strokeWidth
     fun getDrawingColorIndex(): Int {
         return model.cycleDrawingColorCurrentIndex
+    }
+
+    private fun snapshot() = Snapshot(model.paths.toList(), model.importedImage)
+
+    private fun recordUndo() {
+        pushHistory(undoHistory, snapshot())
+        redoHistory.clear()
+    }
+
+    private fun pushHistory(history: ArrayDeque<Snapshot>, snapshot: Snapshot) {
+        if (history.size == HISTORY_LIMIT) history.removeFirst()
+        history.addLast(snapshot)
+    }
+
+    private fun applySnapshot(snapshot: Snapshot) {
+        clearPoints()
+        model.paths.clear()
+        model.paths.addAll(snapshot.paths)
+        model.importedImage = snapshot.image
+        endPathMove()
+        setPenMode()
+    }
+
+    companion object {
+        private const val HISTORY_LIMIT = 100
     }
 }
 
